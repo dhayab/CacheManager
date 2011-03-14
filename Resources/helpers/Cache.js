@@ -22,6 +22,12 @@
 var Cache = new function CacheManager ( ) {
 	var DEFAULT_TTL = 60; // seconds
 	
+	// Initialization. Will create a directory named 'cache' to store cached resources
+	var cacheDirectory = Titanium.Filesystem.getFile(Titanium.Filesystem.applicationDataDirectory + Titanium.Filesystem.separator + 'cache');
+	if ( !cacheDirectory.exists() ) {
+		cacheDirectory.createDirectory();
+	}
+	
 	var create = function ( filename, parameters ) {
 		// FIX 2011-03-02: Workaround for HTTPClient.connectionType forcing to "POST" when sending data
 		if ( parameters.method == "GET" && parameters.data != null ) {
@@ -45,18 +51,19 @@ var Cache = new function CacheManager ( ) {
 		if ( parameters.cookie == true && getCookie() !== false ) {
 			loader.setRequestHeader('Cookie', getCookie());
 		}
+		loader.setRequestHeader('User-Agent', parameters.userAgent);
 		
 		loader.onload = function (e) {
 			if ( loader.getResponseHeader('Set-Cookie') != null ) {
 				saveCookie(loader.getResponseHeader('Set-Cookie'));
 			}
 			
-			var file = Titanium.Filesystem.getFile(Titanium.Filesystem.applicationDataDirectory + Titanium.Filesystem.separator + filename);
+			var file = Titanium.Filesystem.getFile(Titanium.Filesystem.applicationDataDirectory + Titanium.Filesystem.separator + 'cache' + Titanium.Filesystem.separator + filename);
 			if ( file.exists() ) {
 				file.deleteFile();
 			}
 			file.write(this.responseText);
-			parameters.callback(this.responseText);
+			parameters.callback(this.responseText, this.location);
 		};
 		loader.onerror = function (e) {
 			dispatchError(e.error);
@@ -88,6 +95,8 @@ var Cache = new function CacheManager ( ) {
 	 * 								data (optional): The data to send in the request. Can either be null, dictionary or string
 	 * 								method (optional): The HTTP method. Defaults to "GET"
 	 * 								ttl: The time to live in seconds. Defaults to DEFAULT_TTL
+	 * 								cookie: Can be a boolean or a string containing the cookie value. Defaults to true
+	 * 								userAgent: Will override Titanium's default user agent in the current request.
 	 */
 	this.get = function(parameters){
 		if ( typeof(parameters) != 'object' ) {
@@ -114,12 +123,15 @@ var Cache = new function CacheManager ( ) {
 		} else if ( typeof(parameters.cookie) != 'boolean' ) {
 			parameters.cookie = true;
 		}
+		if ( typeof(parameters.userAgent) != 'string' ) {
+			parameters.userAgent = Titanium.userAgent;
+		}
 		
 		var hash = '-' + Titanium.Utils.md5HexDigest(parameters.url + JSON.stringify(parameters.data) + parameters.method);
 		var filename = parameters.url.split('/')[parameters.url.split('/').length-1];
 		filename = filename.length == 0 ? "index" + hash : filename + hash;
 		
-		var file = Titanium.Filesystem.getFile(Titanium.Filesystem.applicationDataDirectory + Titanium.Filesystem.separator + filename);
+		var file = Titanium.Filesystem.getFile(Titanium.Filesystem.applicationDataDirectory + Titanium.Filesystem.separator + 'cache' + Titanium.Filesystem.separator + filename);
 		if ( file.exists() ) {
 			if ( (new Date().getTime() - file.modificationTimestamp()) / 1000 < parameters.ttl || !Titanium.Network.online ) {
 				Titanium.API.debug("CacheManager/ Retrieving " + filename + " from cache");
